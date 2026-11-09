@@ -2,7 +2,7 @@
 # (it isn't on the CocoaPods registry). Swift Package Manager apps use Package.swift from the same repo.
 Pod::Spec.new do |s|
   s.name          = "NotifySDK"
-  s.version       = "0.1.0"
+  s.version       = "0.2.0"
   s.summary       = "Notify in-app inbox for iOS: realtime connection, SQLite cache, NotificationCenterView."
   s.homepage      = "https://github.com/hobbit254/notify-ios"
   s.license       = { :type => "MIT", :file => "LICENSE" }

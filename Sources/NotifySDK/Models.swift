@@ -70,6 +70,14 @@ public struct InboxItem: Codable, Identifiable, Equatable, Sendable {
 
 public struct Preferences: Codable, Equatable, Sendable {
     public var categories: [String: Bool]
+    /// Whether this subscriber gets mobile pushes (ADR 0023); the inbox gets everything either way.
+    /// Left nil in a request, the server keeps the subscriber's choice.
+    public var push: Bool?
+
+    public init(categories: [String: Bool], push: Bool? = nil) {
+        self.categories = categories
+        self.push = push
+    }
 }
 
 /// A read/archive change waiting to reach the server.

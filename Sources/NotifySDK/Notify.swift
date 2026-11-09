@@ -127,7 +127,23 @@ public final class Notify: ObservableObject {
     public func preferences() async throws -> Preferences { try await http("GET", "/v1/preferences") }
 
     public func setPreferences(_ categories: [String: Bool]) async throws -> Preferences {
-        try await http("PUT", "/v1/preferences", body: Preferences(categories: categories))
+        try await http("PUT", "/v1/preferences", body: Preferences(categories: categories)) // push nil: not sent, kept
+    }
+
+    /// Turns mobile push on or off for this subscriber; their categories stay as they are.
+    public func setPushEnabled(_ enabled: Bool) async throws -> Preferences {
+        try await http("PUT", "/v1/preferences", body: ["push": enabled])
+    }
+
+    /// Registers this device's FCM registration token (Firebase Messaging's `fcmToken`, not the APNs
+    /// device token) so the subscriber gets pushes when the app's push is on. Safe to call on every start.
+    public func registerPushToken(_ token: String) async throws {
+        let _: Ignored = try await http("POST", "/v1/devices", body: ["token": token, "platform": "ios"])
+    }
+
+    /// Stops pushes to this device for this subscriber, e.g. on sign-out (call before `stop()`).
+    public func unregisterPushToken(_ token: String) async throws {
+        let _: Ignored = try await http("DELETE", "/v1/devices", body: ["token": token])
     }
 
     // MARK: state
@@ -259,6 +275,7 @@ public final class Notify: ObservableObject {
             return try await http(method, path, body: body, retry: false)
         }
         guard (200..<300).contains(status) else { throw HTTPError(status: status) }
+        if data.isEmpty, let none = Ignored() as? T { return none } // 204
         return try JSONDecoder().decode(T.self, from: data)
     }
 
