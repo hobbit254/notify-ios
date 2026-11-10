@@ -72,23 +72,47 @@ public final class Notify: ObservableObject {
 
     private func emit(_ e: Event) { observers.values.forEach { $0(e) } }
 
-    /// Loads the cache, fetches the inbox and unread count, then connects.
+    /// Loads the cache, fetches the inbox and unread count, then connects. If that fails (no network, the
+    /// token backend down) it doesn't throw: status goes `.offline`, an `.error` event is emitted, and it
+    /// tries again with the reconnect backoff until it succeeds or `stop()` is called. (Still `throws` so
+    /// existing `try await notify.start()` call sites compile unchanged.)
     public func start() async throws {
         guard stopped else { return }
         stopped = false
-        let token = try await getToken()
-        if let cache = o.cache {
-            let claims = jwtClaims(token)
-            cacheKey = "\(claims["app"] ?? ""):\(claims["sub"] ?? "")"
-            if let data = cache.load(key: cacheKey!), let snap = try? JSONDecoder().decode(Snapshot.self, from: data) { restore(snap) }
+        attempt = 0
+        await boot(loadCache: true)
+    }
+
+    private func boot(loadCache: Bool) async {
+        do {
+            let token = try await getToken()
+            if loadCache, let cache = o.cache {
+                let claims = jwtClaims(token)
+                cacheKey = "\(claims["app"] ?? ""):\(claims["sub"] ?? "")"
+                if let data = cache.load(key: cacheKey!), let snap = try? JSONDecoder().decode(Snapshot.self, from: data) { restore(snap) }
+            }
+            if cursor.isEmpty {
+                let page: Page = try await http("GET", "/v1/inbox?limit=\(o.pageSize)")
+                page.items.forEach { add($0, live: false) }
+                if !page.nextCursor.isEmpty { cursor = page.nextCursor }
+            }
+            let count: Count = try await http("GET", "/v1/inbox/unread-count")
+            unread = count.count
+        } catch {
+            guard !stopped else { return }
+            emit(.error("start: \(error)"))
+            setStatus(.offline)
+            // Load the cache on a retry only if it never loaded: what's in memory now is newer.
+            let retryLoadsCache = loadCache && cacheKey == nil
+            let delay = backoff()
+            reconnectTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1e9))
+                guard !Task.isCancelled else { return }
+                await self?.boot(loadCache: retryLoadsCache)
+            }
+            return
         }
-        if cursor.isEmpty {
-            let page: Page = try await http("GET", "/v1/inbox?limit=\(o.pageSize)")
-            page.items.forEach { add($0, live: false) }
-            if !page.nextCursor.isEmpty { cursor = page.nextCursor }
-        }
-        let count: Count = try await http("GET", "/v1/inbox/unread-count")
-        unread = count.count
+        guard !stopped else { return }
         changed()
         connect()
     }
@@ -395,14 +419,19 @@ public final class Notify: ObservableObject {
                 failures = 0
             }
         }
-        let delay = reconnectAfter ?? Double.random(in: 0...min(o.reconnectMax, o.reconnectBase * pow(2, Double(attempt))))
-        attempt += 1
+        let delay = reconnectAfter ?? backoff()
         reconnectAfter = nil
         reconnectTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1e9))
             guard !Task.isCancelled else { return }
             self?.connect()
         }
+    }
+
+    /// Full-jitter exponential backoff, in seconds; `attempt` resets once a connection opens.
+    private func backoff() -> TimeInterval {
+        defer { attempt += 1 }
+        return Double.random(in: 0...min(o.reconnectMax, o.reconnectBase * pow(2, Double(attempt))))
     }
 }
 

@@ -7,11 +7,11 @@ SwiftUI `NotificationCenterView`.
 ## Install
 
 **Swift Package Manager.** In Xcode: File → Add Package Dependencies…, enter
-`https://github.com/hobbit254/notify-ios`, and choose "Up to Next Major Version" from `0.2.0`. Or in a
+`https://github.com/hobbit254/notify-ios`, and choose "Up to Next Major Version" from `0.3.0`. Or in a
 `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/hobbit254/notify-ios.git", from: "0.2.0"),
+.package(url: "https://github.com/hobbit254/notify-ios.git", from: "0.3.0"),
 // and in your target:
 .product(name: "NotifySDK", package: "notify-ios"),
 ```
@@ -19,7 +19,7 @@ SwiftUI `NotificationCenterView`.
 **CocoaPods** (it isn't on the CocoaPods registry, so name the repository):
 
 ```ruby
-pod 'NotifySDK', :git => 'https://github.com/hobbit254/notify-ios.git', :tag => '0.2.0'
+pod 'NotifySDK', :git => 'https://github.com/hobbit254/notify-ios.git', :tag => '0.3.0'
 ```
 
 ## Use
