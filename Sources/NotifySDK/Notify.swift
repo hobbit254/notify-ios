@@ -42,11 +42,14 @@ public final class Notify: ObservableObject {
     @Published public private(set) var transport: Transport?
     /// When the connection last confirmed it was up to date.
     @Published public private(set) var lastSync: Date?
+    /// Older items remain on the server: loadOlder() fetches the next page.
+    @Published public private(set) var hasOlder = true
 
     private let o: Options
     private var byID: [String: InboxItem] = [:]
     private var cursor = ""
     private var newest: InboxItem?
+    private var loadingOlder = false
     private var queue: [Pending] = []
     private var token: String?
     private var tokenTask: Task<String, Error>?
@@ -95,6 +98,7 @@ public final class Notify: ObservableObject {
                 let page: Page = try await http("GET", "/v1/inbox?limit=\(o.pageSize)")
                 page.items.forEach { add($0, live: false) }
                 if !page.nextCursor.isEmpty { cursor = page.nextCursor }
+                hasOlder = page.items.count >= o.pageSize
             }
             let count: Count = try await http("GET", "/v1/inbox/unread-count")
             unread = count.count
@@ -145,6 +149,18 @@ public final class Notify: ObservableObject {
     public func loadArchived() async throws {
         let page: Page = try await http("GET", "/v1/inbox?state=archived&limit=\(o.pageSize)")
         page.items.forEach { add($0, live: false) }
+        changed()
+    }
+
+    /// Loads the next page of older (not archived) items with GET /v1/inbox?before=<oldest shown>, for scrolling
+    /// down; hasOlder says whether any remain. A call while one is loading does nothing.
+    public func loadOlder() async throws {
+        guard hasOlder, !loadingOlder, let last = items.last(where: { $0.state != .archived }) else { return }
+        loadingOlder = true
+        defer { loadingOlder = false }
+        let page: Page = try await http("GET", "/v1/inbox?limit=\(o.pageSize)&before=\(last.cursor.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? last.cursor)")
+        page.items.forEach { add($0, live: false) }
+        hasOlder = !page.nextCursor.isEmpty
         changed()
     }
 
